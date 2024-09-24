@@ -1,19 +1,31 @@
 import { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
-import { getFirestore, collection, addDoc, query, where, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
+import {
+  getAuth,
+  onAuthStateChanged,
+  signInWithPopup,
+  GoogleAuthProvider,
+  signOut,
+} from 'firebase/auth';
+import {
+  getFirestore,
+  collection,
+  query,
+  where,
+  orderBy,
+  addDoc,
+  deleteDoc,
+  doc,
+  onSnapshot,
+} from 'firebase/firestore';
 
 // Initialize Firebase
 const firebaseConfig = {
-  apiKey: "API_KEY",
-  authDomain: "AUTH_DOMAIN",
-  projectId: "PROJECT_ID",
-  storageBucket: "STOREAGE_BUCKET",
-  messagingSenderId: "MESSAGE_SENDER_ID",
-  appId: "APP_ID"
+  apiKey: 'YOUR_API_KEY', // Replace with your Firebase API key
+  authDomain: 'your-app.firebaseapp.com', // Replace with your auth domain
+  projectId: 'your-project-id', // Replace with your project ID
+  // ...other Firebase config options
 };
-
-
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -25,45 +37,86 @@ function App() {
   const [newTodo, setNewTodo] = useState('');
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-      setUser(user);
-      if (user) {
-        const q = query(collection(db, 'todos'), where('userId', '==', user.uid));
-        onSnapshot(q, (querySnapshot) => {
-          const todoList = [];
-          querySnapshot.forEach((doc) => {
-            todoList.push({ id: doc.id, ...doc.data() });
-          });
-          setTodos(todoList);
-        });
-      }
+    // Listen for authentication state changes
+    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
     });
-    return () => unsubscribe();
+
+    return () => {
+      unsubscribeAuth();
+    };
   }, []);
+
+  useEffect(() => {
+    let unsubscribeTodos;
+    if (user) {
+      const q = query(
+        collection(db, 'todos'),
+        where('user_id', '==', user.uid),
+        orderBy('created_at', 'desc')
+      );
+
+      unsubscribeTodos = onSnapshot(q, (querySnapshot) => {
+        const todosData = [];
+        querySnapshot.forEach((doc) => {
+          todosData.push({ id: doc.id, ...doc.data() });
+        });
+        setTodos(todosData);
+      });
+    } else {
+      setTodos([]);
+    }
+
+    return () => {
+      if (unsubscribeTodos) {
+        unsubscribeTodos();
+      }
+    };
+  }, [user]);
 
   const signIn = () => {
     const provider = new GoogleAuthProvider();
-    signInWithPopup(auth, provider);
+    signInWithPopup(auth, provider).catch((error) => {
+      console.error('Error signing in:', error.message);
+    });
   };
 
   const signOutUser = () => {
-    signOut(auth);
-    setTodos([]);
+    signOut(auth)
+      .then(() => {
+        setTodos([]);
+      })
+      .catch((error) => {
+        console.error('Error signing out:', error.message);
+      });
+  };
+
+  const fetchTodos = () => {
+    // Not needed as we're using real-time listeners with onSnapshot
   };
 
   const addTodo = async (e) => {
     e.preventDefault();
     if (newTodo.trim() === '') return;
-    await addDoc(collection(db, 'todos'), {
-      title: newTodo,
-      completed: false,
-      userId: user.uid,
-    });
-    setNewTodo('');
+    try {
+      await addDoc(collection(db, 'todos'), {
+        title: newTodo,
+        completed: false,
+        user_id: user.uid,
+        created_at: new Date(),
+      });
+      setNewTodo('');
+    } catch (error) {
+      console.error('Error adding todo:', error.message);
+    }
   };
 
   const deleteTodo = async (id) => {
-    await deleteDoc(doc(db, 'todos', id));
+    try {
+      await deleteDoc(doc(db, 'todos', id));
+    } catch (error) {
+      console.error('Error deleting todo:', error.message);
+    }
   };
 
   return (
@@ -71,7 +124,7 @@ function App() {
       <h1>Firebase Todo App</h1>
       {user ? (
         <>
-          <p>Welcome, {user.displayName}!</p>
+          <p>Welcome, {user.email}!</p>
           <button onClick={signOutUser}>Sign Out</button>
           <form onSubmit={addTodo}>
             <input
