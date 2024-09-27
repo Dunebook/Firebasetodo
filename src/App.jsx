@@ -1,22 +1,25 @@
+// src/App.js
 import React, { useState, useEffect } from 'react';
-import './App.css';
-import { auth, firestore } from './firebaseConfig';
+import './App.css'; // Import the updated CSS file
+import { auth, firestore } from './firebaseConfig'; // Import Firebase services
 
 function App() {
   const [user, setUser] = useState(null);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [todos, setTodos] = useState([]);
   const [newTodoTitle, setNewTodoTitle] = useState('');
   const [editingTodoId, setEditingTodoId] = useState(null);
   const [editingTodoTitle, setEditingTodoTitle] = useState('');
 
+  // Authentication state
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+
   // Listen for authentication state changes
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-      if (user) {
-        setUser(user);
-        fetchTodos(user.uid);
+    const unsubscribe = auth.onAuthStateChanged((currentUser) => {
+      if (currentUser) {
+        setUser(currentUser);
+        fetchTodos(currentUser.uid);
       } else {
         setUser(null);
         setTodos([]);
@@ -24,35 +27,6 @@ function App() {
     });
     return () => unsubscribe();
   }, []);
-
-  // Handle sign-in
-  const handleSignIn = (e) => {
-    e.preventDefault();
-    auth
-      .signInWithEmailAndPassword(email, password)
-      .then((userCredential) => {
-        console.log('User signed in:', userCredential.user);
-        setEmail('');
-        setPassword('');
-      })
-      .catch((error) => {
-        console.error('Error signing in:', error.message);
-        alert(error.message);
-      });
-  };
-
-  // Handle sign-out
-  const handleSignOut = () => {
-    auth
-      .signOut()
-      .then(() => {
-        console.log('User signed out');
-      })
-      .catch((error) => {
-        console.error('Error signing out:', error.message);
-        alert(error.message);
-      });
-  };
 
   // Fetch todos from Firestore
   const fetchTodos = (userId) => {
@@ -69,22 +43,40 @@ function App() {
       });
   };
 
+  // Handle sign in
+  const handleSignIn = (e) => {
+    e.preventDefault();
+    auth
+      .signInWithEmailAndPassword(email, password)
+      .then(() => {
+        setEmail('');
+        setPassword('');
+      })
+      .catch((error) => {
+        alert(error.message);
+      });
+  };
+
+  // Handle sign out
+  const handleSignOut = () => {
+    auth.signOut().catch((error) => {
+      alert(error.message);
+    });
+  };
+
   // Add a new todo
   const handleAddTodo = (e) => {
     e.preventDefault();
     if (newTodoTitle.trim() === '') return;
-
     firestore
       .collection('todos')
       .add({
         title: newTodoTitle,
         user_id: user.uid,
-        completed: false,
-        created_at: firebase.firestore.FieldValue.serverTimestamp(),
+        created_at: new Date(),
       })
       .then(() => {
         setNewTodoTitle('');
-        console.log('Todo added');
       })
       .catch((error) => {
         console.error('Error adding todo:', error.message);
@@ -101,7 +93,6 @@ function App() {
   const handleUpdateTodo = (e) => {
     e.preventDefault();
     if (editingTodoTitle.trim() === '') return;
-
     firestore
       .collection('todos')
       .doc(editingTodoId)
@@ -109,7 +100,6 @@ function App() {
       .then(() => {
         setEditingTodoId(null);
         setEditingTodoTitle('');
-        console.log('Todo updated');
       })
       .catch((error) => {
         console.error('Error updating todo:', error.message);
@@ -122,9 +112,6 @@ function App() {
       .collection('todos')
       .doc(id)
       .delete()
-      .then(() => {
-        console.log('Todo deleted');
-      })
       .catch((error) => {
         console.error('Error deleting todo:', error.message);
       });
@@ -132,58 +119,41 @@ function App() {
 
   return (
     <div className="app-container">
-      {!user ? (
-        <div className="auth-container">
-          <form className="auth-form" onSubmit={handleSignIn}>
-            <h2>Sign In</h2>
-            <input
-              type="email"
-              placeholder="Email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-            <input
-              type="password"
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-            <button type="submit">Sign In</button>
-          </form>
-        </div>
-      ) : (
+      <h1>📝 Vultr's To do app</h1>
+      {user ? (
         <div>
           <div className="header">
-            <h1>Todo List</h1>
+            <p>Welcome, {user.email}</p>
             <button className="sign-out-button" onClick={handleSignOut}>
               Sign Out
             </button>
           </div>
 
-          <form className="todo-form" onSubmit={handleAddTodo}>
+          <form onSubmit={handleAddTodo} className="todo-form">
             <input
               type="text"
-              placeholder="New Todo"
+              placeholder="What needs to be done?"
               value={newTodoTitle}
               onChange={(e) => setNewTodoTitle(e.target.value)}
             />
-            <button type="submit">Add Todo</button>
+            <button type="submit">Add</button>
           </form>
 
           <ul className="todo-list">
             {todos.map((todo) => (
               <li key={todo.id}>
                 {editingTodoId === todo.id ? (
-                  <form className="edit-form" onSubmit={handleUpdateTodo}>
+                  <form onSubmit={handleUpdateTodo} className="edit-form">
                     <input
                       type="text"
                       value={editingTodoTitle}
                       onChange={(e) => setEditingTodoTitle(e.target.value)}
                     />
-                    <button type="submit">Update</button>
-                    <button type="button" onClick={() => setEditingTodoId(null)}>
+                    <button type="submit">Save</button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingTodoId(null)}
+                    >
                       Cancel
                     </button>
                   </form>
@@ -191,16 +161,43 @@ function App() {
                   <div className="todo-item">
                     <span>{todo.title}</span>
                     <div className="todo-actions">
-                      <button onClick={() => handleEditTodo(todo.id, todo.title)}>✏️</button>
-                      <button onClick={() => handleDeleteTodo(todo.id)}>🗑️</button>
+                      <button
+                        onClick={() => handleEditTodo(todo.id, todo.title)}
+                      >
+                        ✏️
+                      </button>
+                      <button onClick={() => handleDeleteTodo(todo.id)}>
+                        🗑️
+                      </button>
                     </div>
                   </div>
                 )}
               </li>
             ))}
           </ul>
-
-          <FileUpload />
+        </div>
+      ) : (
+        <div className="auth-container">
+          <form onSubmit={handleSignIn} className="auth-form">
+            <h2>Sign In</h2>
+            <input
+              type="email"
+              placeholder="Email"
+              value={email}
+              autoComplete="username"
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+            <input
+              type="password"
+              placeholder="Password"
+              value={password}
+              autoComplete="current-password"
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+            <button type="submit">Sign In</button>
+          </form>
         </div>
       )}
     </div>
